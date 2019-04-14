@@ -4,4 +4,4 @@ project(Filozofowie)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-lncurses")
 
-add_executable(Filozofowie Graphics.cpp)
+add_executable(Filozofowie main.cpp Graphics.cpp Graphics.h)

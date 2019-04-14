@@ -2,9 +2,14 @@
 #include <array>
 #include <thread>
 #include <random>
+#include <ncurses.h>
+#include "Graphics.h"
 
-constexpr int table_size = 5;
+constexpr int TABLE_SIZE = 5;
+constexpr int COLOR_PINK = 8;
+
 std::mutex cout_mutex;
+auto *graphics = new Graphics();
 
 struct Synchronization {
     std::mutex mutex;
@@ -29,9 +34,11 @@ struct Fork {
     std::mutex mutex;
     Synchronization synchronization;
 
+    const int x;
+    const int y;
 public:
-    Fork(const int fork_id, const int owner_id) :
-            id(fork_id), owner(owner_id), dirty(true) {}
+    Fork(const int fork_id, const int owner_id, const int x, const int y) :
+            id(fork_id), owner(owner_id), dirty(true), x(x), y(y) {}
 
     void request(int const owner_id) {
         while (owner != owner_id) {
@@ -54,10 +61,6 @@ public:
 struct Table {
     std::atomic<bool> ready{false};
     Synchronization synchronization;
-
-    ~Table() {
-        std::cout << "=== DINNER IS OVER ===" << std::endl;
-    }
 };
 
 struct Philosopher {
@@ -78,8 +81,8 @@ public:
 
     ~Philosopher() {
         dinner_thread.join();
-        std::lock_guard<std::mutex> cout_lock(cout_mutex);
-        std::cout << name << " stopped dining." << std::endl;
+//        std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//        std::cout << name << " stopped dining." << std::endl;
     }
 
     void dine() {
@@ -100,28 +103,31 @@ public:
         // std::adopt_lock parameter indicates that the mutexes are already locked and they should adopt the ownership of the existing lock
         std::lock_guard<std::mutex>  left_lock(left_fork.mutex, std::adopt_lock);
         std::lock_guard<std::mutex> right_lock(right_fork.mutex, std::adopt_lock);
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
-        // picked up forks
-        {
-            std::lock_guard<std::mutex> cout_lock(cout_mutex);
-            std::cout << name << " started eating" << std::endl;
-        }
+        std::lock_guard<std::mutex> cout_lock(cout_mutex);
+        graphics->redraw_fork(id, left_fork.x, left_fork.y);
+        graphics->redraw_fork(id, right_fork.x, right_fork.y);
+        refresh();
+//        {
+//            std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//            std::cout << name << " started eating" << std::endl;
+//        }
 
         thread_local std::array<const char *, 3> foods {{"chicken", "rice", "soda"}};
         thread_local std::uniform_int_distribution<> wait(2, 4);
         thread_local std::uniform_int_distribution<> dist(0, foods.size() - 1);
 
         while (dist(random_generator) > 0) {
-            std::lock_guard<std::mutex>  cout_lock(cout_mutex);
-            std::cout << name << " is eating " << foods[dist(random_generator)] << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(wait(random_generator) * 50));
+//            std::lock_guard<std::mutex>  cout_lock(cout_mutex);
+//            std::cout << name << " is eating " << foods[dist(random_generator)] << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(wait(random_generator) * 250));
         }
 
         left_fork.done_using();
         right_fork.done_using();
-        std::lock_guard<std::mutex> cout_lock(cout_mutex);
-        std::cout << name << " finished eating" << std::endl;
+//        std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//        std::cout << name << " finished eating" << std::endl;
     }
 
     void think() {
@@ -132,52 +138,71 @@ public:
         thread_local std::uniform_int_distribution<> wait(2, 4);
         thread_local std::uniform_int_distribution<> dist(0, topics.size() - 1);
 
-        std::cout << name << " started thinking" << std::endl;
+//        std::cout << name << " started thinking" << std::endl;
         while (dist(random_generator) > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(wait(random_generator) * 150));
-            std::lock_guard<std::mutex> cout_lock(cout_mutex);
-            std::cout << name << " is thinking about " << topics[dist(random_generator)] << std::endl;
+//            std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//            std::cout << name << " is thinking about " << topics[dist(random_generator)] << std::endl;
             if(not dinner_table.ready) return;
         }
 
-        std::lock_guard<std::mutex> cout_lock(cout_mutex);
-        std::cout << name << " finished thinking" << std::endl;
+//        std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//        std::cout << name << " finished thinking" << std::endl;
     }
 };
 
 
 void dinnertime(int time_limit) {
-    std::cout << "=== DINNER HAS STARTED ===" << std::endl;
+//    std::cout << "=== DINNER HAS STARTED ===" << std::endl;
+    clear();
+    graphics->draw_stage();
+    refresh();
     {
         Table table;
-        std::array<Fork, table_size> forks {{
-            {1, 1},
-            {2, 2},
-            {3, 3},
-            {4, 4},
-            {5, 1}
+        std::array<Fork, TABLE_SIZE> forks {{
+            {1, 1, 13, 17},
+            {2, 2, 18, 14},
+            {3, 3, 22, 23},
+            {4, 4, 18, 31},
+            {5, 1, 13, 28}
         }};
 
-        std::array<Philosopher, table_size> philosophers {{  // threads are created using the constructor
-            {1, "Aristotle", table, forks[0], forks[1]},
-            {2, "Plato", table, forks[1], forks[2]},
-            {3, "Confucius", table, forks[2], forks[3]},
-            {4, "Socrates", table, forks[3], forks[4]},
-            {5, "Sun Tzu", table, forks[4], forks[0]},
+        std::array<Philosopher, TABLE_SIZE> philosophers {{  // threads are created using the constructor
+            {1, "Aristotle", table, forks[4], forks[0]},
+            {2, "Plato", table, forks[0], forks[1]},
+            {3, "Confucius", table, forks[1], forks[2]},
+            {4, "Socrates", table, forks[2], forks[3]},
+            {5, "Sun Tzu", table, forks[3], forks[4]},
         }};
         std::this_thread::sleep_for(std::chrono::seconds(1));
         table.ready = true;
         table.synchronization.notify_all();
         std::this_thread::sleep_for(std::chrono::seconds(time_limit));
         table.ready = false;
-        std::lock_guard<std::mutex> cout_lock(cout_mutex);
-        std::cout << "=== DINNER IS ENDING ===" << std::endl;
+//        std::lock_guard<std::mutex> cout_lock(cout_mutex);
+//        std::cout << "=== DINNER IS ENDING ===" << std::endl;
     }   // end of philosophers life (scope variable)
 }
 
 int main(int argc, char **argv) {
-    int time_limit = 5;
-    dinnertime(time_limit);
+    initscr();        //ncurses start
+    keypad(stdscr, TRUE);
+    curs_set(0);
+    noecho();        //pressed characters do not print on the screen
+    cbreak();        //pressed keys are immediately returned by getch() instead of waiting until new line is read
 
+    start_color();
+    init_color(COLOR_PINK, 800, 410, 790); // new pink color
+
+    init_pair(1, COLOR_CYAN, COLOR_BLACK);
+    init_pair(2, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(3, COLOR_PINK, COLOR_BLACK);
+    init_pair(4, COLOR_RED, COLOR_BLACK);
+    init_pair(5, COLOR_GREEN, COLOR_BLACK);
+
+    int time_limit = 15;
+    dinnertime(time_limit);
+    getch();
+    endwin();
     return 0;
 }
